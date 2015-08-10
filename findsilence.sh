@@ -27,10 +27,10 @@ do
 	case ${args[i]} in
 	"--help")
 		printf "Usage: findsilence [OPTIONS]\n\n"
-		printf "  -t\tset threshold value\n"
-		printf "  -m\tset minimum silence duration value\n"
-		printf "  -st\tsort by time, when event occurred\n"
-		printf "  -sc\tsort by channel, where event occurred\n\n"
+		printf "  -t=FLOAT\tset threshold value\n"
+		printf "  -m=FLOAT\tset minimum silence duration value\n"
+		printf "  -st\t\tsort by time, when event occurred\n"
+		printf "  -sc\t\tsort by channel, where event occurred\n\n"
 		printf "Example:\n"
 		printf "  $ findsilence -t 0.5 -m 0.25 -st\n\n"
 
