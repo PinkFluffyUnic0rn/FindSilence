@@ -291,8 +291,13 @@ void init_centroids( uint *hist, double *means,
 	k0 = floor(p0*(double)k + 0.5);
 	k1 = floor(p1*(double)k + 0.5);
 
-	if ( (double)((max+min)/2 - min) / (double)(k0) > 25.0
-		&& (double)(max - (max+min)/2) / (double)(k1) > 25.0 )
+//	if ( (double)((max+min)/2 - min) / (double)(k0) > 25.0
+//		&& (double)(max - (max+min)/2) / (double)(k1) > 25.0 )
+
+	if ( (double) s0 / (double)(k0) > 50.0
+		&& (double)((max+min)/2 - min) / (double)(k0) > 50.0
+		&& (double) s1 / (double)(k1) > 50.0 
+		&& (double)(max - (max+min)/2) / (double)(k1) > 50.0 )
 	{
 		init_centroids( hist, means, k_min, k_min + k0, min, (max+min)/2 );
 		init_centroids( hist, means, k_min + k0, k_max, (max+min)/2, max );
@@ -372,12 +377,16 @@ uint *find_silence( double *sample_data, uint len )
 		}
 		
 		clusters = k_means( sample_data + i, d, k, &means );
-
+/*
+for ( j = 0; j < k; ++j )
+	printf( "* %f\n", means[j] );
+printf( "\n" );
+*/
 		for ( j = 0; j < k; ++j )
 			id_min = (means[j] < means[id_min]) ? j : id_min;
 
 		for ( j = 0; j < d; ++j )
-			silence[i + j] = (clusters[j] == id_min);
+			silence[i + j] = (clusters[j] == 0);
 	
 		free( clusters );
 	}
@@ -456,7 +465,6 @@ int main( int argc, char **argv )
 		print_output( silence, len, i );
 
 // for testing //
-/*
 		draw_signal( sample_data, len, silence );
 		draw_histogram( sample_data, len );
 	
@@ -470,7 +478,6 @@ int main( int argc, char **argv )
 		al_play_sample( audio, 1.0f, 0.0f, 1.0f,
 			ALLEGRO_PLAYMODE_ONCE, NULL );
 		while ( fgetc(stdin) != EOF ) {}
-*/
 	}
 
 	al_destroy_sample( audio );
