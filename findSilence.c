@@ -2,12 +2,9 @@
 #include <stdlib.h>
 #include <math.h>
 #include <stdint.h>
+#include <SDL/SDL.h>
 
-#include <allegro5/allegro.h>
-#include <allegro5/allegro_audio.h>
-#include <allegro5/allegro_acodec.h> 
-
-#include "findSilence_test.h"
+// #include "findSilence_test.h"
 
 #define MIN_FREQUENCY 200
 #define MAX_FREQUENCY 4000
@@ -17,19 +14,20 @@
 
 double border;
 double min_length_secs;
-
 char *fname;
-ALLEGRO_SAMPLE *audio;
 
-void *file_data;
-uint samples_count = 0;
-uint audio_frequency = 0;
-ALLEGRO_AUDIO_DEPTH audio_depth = 0;
-uint audio_channels = 0;
+struct _audio_file
+{
+	void *data;
+	uint samples_count;
+	uint frequency;
+	uint16_t depth;
+	uint channels;
+} audio_file;
 
 void print_event( uint c, uint i, char ev )
 {
-	printf( "%u %u %c\n", c, i*1000/audio_frequency, ev );
+	printf( "%u %u %c\n", c, i*1000/audio_file.frequency, ev );
 }
 
 void print_output( uint *silence, uint len, uint c )
@@ -46,10 +44,10 @@ void print_output( uint *silence, uint len, uint c )
 		type = silence[i] ? 's' : 'S';
 
 		if ( prev_type != type )
-			print_event( c, i*samples_count/len, type );
+			print_event( c, i*audio_file.samples_count/len, type );
 	}
 
-	print_event( c, samples_count, 'e' );
+	print_event( c, audio_file.samples_count, 'e' );
 }
 
 double derivite_sqr( double *sample_data, uint beg, uint end )
@@ -133,17 +131,17 @@ double *smooth_signal( double *in_data, uint samples_count, uint d )
 
 double *get_channel( int16_t *sample_data, uint c )
 {
-	double *s_data = (double *) malloc( samples_count * sizeof(double) );
+	double *s_data = (double *) malloc( audio_file.samples_count * sizeof(double) );
 	uint i;
 
-	for ( i = 0; i < samples_count; ++i )
-		switch( audio_depth )
+	for ( i = 0; i < audio_file.samples_count; ++i )
+		switch( audio_file.depth )
 		{
-		case ALLEGRO_AUDIO_DEPTH_INT8:
-			s_data[i] = ((int8_t *) file_data)[i*audio_channels + c];
+		case AUDIO_S8:
+			s_data[i] = ((int8_t *) audio_file.data)[i*audio_file.channels + c];
 			break;
-		case ALLEGRO_AUDIO_DEPTH_INT16:
-			s_data[i] = ((int16_t *) file_data)[i*audio_channels + c];
+		case AUDIO_S16:
+			s_data[i] = ((int16_t *) audio_file.data)[i*audio_file.channels + c];
 			break;
 		}
 
@@ -152,26 +150,32 @@ double *get_channel( int16_t *sample_data, uint c )
 
 int load_file()
 {
-	audio = al_load_sample( fname );
-
-	if ( !audio )
+	Uint32 wav_length;
+	Uint8 *wav_buffer;
+	SDL_AudioSpec wav_spec;
+	
+	if( SDL_LoadWAV(fname, &wav_spec, &wav_buffer, &wav_length) == NULL )
 	{
-		fprintf( stderr, "File format not supported\n" );
-		exit( 1 );	
+		fprintf( stderr, "Cannot load file\n" );
+		exit( 2 );	
 	}
 
-	file_data = al_get_sample_data( audio );
+	audio_file.data = (void *) wav_buffer;
 
-	samples_count = al_get_sample_length( audio );
-	audio_depth = al_get_sample_depth( audio );
-	audio_frequency = al_get_sample_frequency( audio );
-	audio_channels = al_get_channel_count( al_get_sample_channels(audio) );
+	audio_file.samples_count = wav_length;
+	
+	if ( audio_file.depth != AUDIO_S16 )
+		audio_file.samples_count /= 2;
+		
+	audio_file.depth = wav_spec.format;
+	audio_file.frequency = wav_spec.freq;
+	audio_file.channels = wav_spec.channels;
 
-	if ( audio_depth != ALLEGRO_AUDIO_DEPTH_INT8
-		&& audio_depth != ALLEGRO_AUDIO_DEPTH_INT16 )
+	if ( audio_file.depth != AUDIO_S16
+		&& audio_file.depth != AUDIO_S8 )
 	{
 		fprintf( stderr, "PCM not supported\n" );
-		exit( 2 );
+		exit( 3 );
 	}
 
 	return 1;
@@ -184,13 +188,14 @@ void read_args( int argc, char **argv )
 	min_length_secs = atof( argv[3] );
 }
 
-void init_allegro()
+void init_SDL()
 {
-	al_init();
-	al_install_audio();
-	al_init_acodec_addon();
-
-	al_reserve_samples( 1 );
+	if (SDL_Init(SDL_INIT_AUDIO) < 0)
+	{
+		fprintf( stderr, "Cannot initilize SDL: %s\n",
+			SDL_GetError() );
+		exit( 1 );
+	}
 }
 
 double metric( double a, double b )
@@ -291,9 +296,6 @@ void init_centroids( uint *hist, double *means,
 	k0 = floor(p0*(double)k + 0.5);
 	k1 = floor(p1*(double)k + 0.5);
 
-//	if ( (double)((max+min)/2 - min) / (double)(k0) > 25.0
-//		&& (double)(max - (max+min)/2) / (double)(k1) > 25.0 )
-
 	if ( (double) s0 / (double)(k0) > 50.0
 		&& (double)((max+min)/2 - min) / (double)(k0) > 50.0
 		&& (double) s1 / (double)(k1) > 50.0 
@@ -360,7 +362,7 @@ uint *k_means( double *sample_data, uint len, uint k, double **means )
 uint *find_silence( double *sample_data, uint len )
 {
 	uint k = MEANS_IN_PART;
-	uint d = SECS_IN_PART * audio_frequency * len / samples_count;
+	uint d = SECS_IN_PART * audio_file.frequency * len / audio_file.samples_count;
 	uint *silence = malloc( sizeof(uint) * len );
 	uint i, j;
 
@@ -377,11 +379,7 @@ uint *find_silence( double *sample_data, uint len )
 		}
 		
 		clusters = k_means( sample_data + i, d, k, &means );
-/*
-for ( j = 0; j < k; ++j )
-	printf( "* %f\n", means[j] );
-printf( "\n" );
-*/
+
 		for ( j = 0; j < k; ++j )
 			id_min = (means[j] < means[id_min]) ? j : id_min;
 
@@ -398,7 +396,7 @@ void remove_short_ranges( uint *silence, uint len )
 {
 	uint *tmp_pr, *tmp;
 	uint min_length_samples = min_length_secs
-		* (double)(audio_frequency * len / samples_count);
+		* (double)(audio_file.frequency * len / audio_file.samples_count);
 	
 	for ( tmp = silence; ; ++tmp )
 	{
@@ -424,29 +422,29 @@ int main( int argc, char **argv )
 {
 	int i, j;
 	
-	init_allegro();
+	init_SDL();
 	
 	read_args( argc, argv );
 
 	load_file();
 
-	for ( i = 0; i < audio_channels; ++i )
+	for ( i = 0; i < audio_file.channels; ++i )
 	{
-		double *sample_data = get_channel( file_data, i );
-		uint len = samples_count;
+		double *sample_data = get_channel( audio_file.data, i );
+		uint len =  audio_file.samples_count;
 		uint d;
 		uint *silence;
 
-		d = audio_frequency / MAX_FREQUENCY;
+		d = audio_file.frequency / MAX_FREQUENCY;
 		sample_data = smooth_signal( sample_data, len, d );
 		len /= d;	
 
 		to_borders( sample_data, len );
-
-		d = audio_frequency / d / MIN_FREQUENCY;
+		
+		d = audio_file.frequency / d / MIN_FREQUENCY;
 		sample_data = signal_derivitive_sqr( sample_data, len, d );
 		len /= d;
-		
+	
 		if ( border > 0.0 )
 		{
 			d = MIN_FREQUENCY/10;
@@ -465,22 +463,30 @@ int main( int argc, char **argv )
 		print_output( silence, len, i );
 
 // for testing //
+/*
 		draw_signal( sample_data, len, silence );
 		draw_histogram( sample_data, len );
 	
-		int16_t *raw_data = (int16_t *) file_data;
+		int16_t *raw_data = (int16_t *) audio_file.data;
 		
-		for ( i = 0; i < samples_count; ++i )
-			if ( silence[i/(samples_count/len)] )
-				raw_data[i*audio_channels] = 0;
-	
-		printf( "%s\n", "EOF to stop playing" );
-		al_play_sample( audio, 1.0f, 0.0f, 1.0f,
-			ALLEGRO_PLAYMODE_ONCE, NULL );
-		while ( fgetc(stdin) != EOF ) {}
-	}
+		for ( i = 0; i < audio_file.samples_count; ++i )
+			if ( silence[i/(audio_file.samples_count/len)] )
+				raw_data[i*audio_file.channels] = 0;
 
-	al_destroy_sample( audio );
+		printf( "%s\n", "EOF to stop playing" );
+
+		SDL_AudioSpec audio_spec;
+		audio_spec.freq = audio_file.frequency;
+		audio_spec.format = audio_file.depth;
+		audio_spec.channels = audio_file.channels;
+		audio_spec.samples = 4096;
+		audio_spec.samples = audio_file.samples_count*2;
+		
+		play_audio( &audio_spec, (int8_t *) raw_data, audio_file.samples_count*2 );
+
+		while ( fgetc(stdin) != EOF ) {}
+*/
+	}
 
 	return 0;
 }

@@ -8,6 +8,15 @@ struct rgb
 	unsigned char b, g, r, a;
 };
 
+struct audio_play
+{
+	Uint8 *audio_pos;
+	Uint32 audio_len;
+};
+
+// Uint8 *audio_pos;
+// Uint32 audio_len;
+
 #define WIDTH 1024
 #define HEIGHT 768
 
@@ -39,7 +48,7 @@ void draw_signal( double *sample_data, uint len, uint *silence )
 		y = (y > HEIGHT) ? (HEIGHT - 1) : ((y < 0) ? 0 : y);
 	
 		for ( j = y; j < HEIGHT; ++j )
-			image_data[j*WIDTH+x] = silence[i] ? blue : red;	
+			image_data[j*WIDTH+x] = red;//silence[i] ? blue : red;	
 	}
 
 	cairo_surface_write_to_png( csur, "Signal" );
@@ -95,4 +104,40 @@ void draw_histogram( double *sample_data, uint len )
 	}
 	
 	cairo_surface_write_to_png( csur, "Histogram" );	
+}
+
+void my_audio_callback( void *userdata, Uint8 *stream, int len )
+{
+	struct audio_play *play = (struct audio_play *) userdata;	
+
+	if ( play->audio_len == 0 )
+	{
+		free( play );
+		return;
+	}
+
+	len = ( len > play->audio_len ? play->audio_len : len );
+	SDL_MixAudio(stream, play->audio_pos, len, SDL_MIX_MAXVOLUME);
+	
+	play->audio_pos += len;
+	play->audio_len -= len;
+}
+
+void play_audio( SDL_AudioSpec *wav_spec, int8_t *wav_buffer, uint32_t len )
+{
+	struct audio_play *play = malloc( sizeof(struct audio_play) );	
+
+	wav_spec->callback = my_audio_callback;
+	wav_spec->userdata = play;
+	
+	play->audio_pos = wav_buffer;
+	play->audio_len = len;
+	
+	if ( SDL_OpenAudio(wav_spec, NULL) < 0 )
+	{
+		fprintf(stderr, "Couldn't open audio: %s\n", SDL_GetError());
+		exit(-1);
+	}
+	
+	SDL_PauseAudio(0);
 }
