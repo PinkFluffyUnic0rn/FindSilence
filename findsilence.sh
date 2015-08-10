@@ -24,14 +24,25 @@ isfloat ()
 
 for (( i=0; i < $#; ++i ))
 do
-	case ${args[i]:0:2} in
+	case ${args[i]} in
+	"--help")
+		printf "Usage: findsilence [OPTIONS]\n\n"
+		printf "  -t\tset threshold value\n"
+		printf "  -m\tset minimum silence duration value\n"
+		printf "  -st\tsort by time, when event occurred\n"
+		printf "  -sc\tsort by channel, where event occurred\n\n"
+		printf "Example:\n"
+		printf "  $ findsilence -t 0.5 -m 0.25 -st\n\n"
+
+		exit 0
+		;;
 	"-t")
 		isfloat ${args[++i]}
 
 		if [ $? == 0 ]
 		then
 			echo "Wrong threshold value -- ${args[i]}"
-			exit -1
+			exit 1
 		fi
 
 		threshold=${args[i]}
@@ -42,7 +53,7 @@ do
 		if [ $? == 0 ]
 		then
 			echo "Wrong minimun silence duration value -- ${args[i]}"
-			exit -1
+			exit 1
 		fi
 
 		duration=${args[i]}
@@ -58,7 +69,7 @@ do
 			;;
 		*)
 			echo "Wrong sorting key -- ${args[i]:2:3}" >&2
-			exit -1
+			exit 1
 			;;
 		esac
 		;;
@@ -72,9 +83,8 @@ done
 while read fname
 do
 	sox $fname -e signed-integer /tmp/fsilence_$$.wav
-	echo $fname
-#	$executable_path "/tmp/fsilence_$$.wav" $threshold $duration | sort -n $sort_key
-	$executable_path "/tmp/fsilence_$$.wav" $threshold $duration
+	echo "F $fname"
+	$executable_path "/tmp/fsilence_$$.wav" $threshold $duration | sort -n $sort_key
 done
 
 rm "/tmp/fsilence_$$.wav"
