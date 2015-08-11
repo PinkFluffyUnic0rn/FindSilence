@@ -6,7 +6,8 @@ executable_path="/home/qwerty/FindSilence/findsilence"
 #setting default values to parameters
 sort_key="-k 1,1 -k 2,2"
 threshold=-1
-duration=0.25
+si_duration=0.25
+so_duration=0.0625
 
 args=( "$@" )
 
@@ -27,10 +28,11 @@ do
 	case ${args[i]} in
 	"--help")
 		printf "Usage: findsilence [OPTIONS]\n\n"
-		printf "  -t=FLOAT\tset threshold value\n"
-		printf "  -m=FLOAT\tset minimum silence duration value\n"
+		printf "  -t FLOAT\tset threshold value (automaticly by default)\n" 
+		printf "  -ms FLOAT\tset minimum silence duration value (default value is %f)\n" $si_duration
+		printf "  -mS FLOAT\tset minimum sound duration value (default value is %f)\n" $so_duration
 		printf "  -st\t\tsort by time, when event occurred\n"
-		printf "  -sc\t\tsort by channel, where event occurred\n\n"
+		printf "  -sc\t\tsort by channel, where event occurred (default)\n\n"
 		printf "Example:\n"
 		printf "  $ findsilence -t 0.5 -m 0.25 -st\n\n"
 
@@ -47,19 +49,33 @@ do
 
 		threshold=${args[i]}
 		;;
-	"-m")
-		isfloat ${args[++i]}
-
+	"-ms"|"-mS")
+	
+		isfloat ${args[i+1]}
+		
 		if [ $? == 0 ]
-		then
-			echo "Wrong minimun silence duration value -- ${args[i]}"
-			exit 1
-		fi
+			then
+				echo "Wrong minimun duration value -- ${args[i+1]}"
+				exit 1
+			fi
 
-		duration=${args[i]}
+		case ${args[i]:2:3} in
+		's')
+			si_duration=${args[i+1]}
+			;;
+		'S')
+			so_duration=${args[i+1]}		
+			;;
+		*)
+			echo "Wrong argument -- ${args[i]}" >&2
+			;;
+		esac
+
+		((++i))
 		;;
+		
 
-	"-s")
+	"-sc"|"-st")
 		case ${args[i]:2:3} in
 		'c')
 			sort_key="-k 1,1 -k 2,2"
@@ -68,23 +84,35 @@ do
 			sort_key="-k 2,2"
 			;;
 		*)
-			echo "Wrong sorting key -- ${args[i]:2:3}" >&2
+			echo "Wrong argument -- ${args[i]}" >&2
 			exit 1
 			;;
 		esac
 		;;
 	*)
-		echo "Wrong argument -- ${args[i]:0:2}" >&2
+		echo "Wrong argument -- ${args[i]}" >&2
 		exit -1
 		;;
 	esac
 done
 
-while read fname
+while true
 do
+	read fname
+	tmp=$?
+	
+	if [[ "$fname" = "" && ${tmp} != 0 ]]
+	then
+		break
+	fi
+		
 	sox $fname -e signed-integer /tmp/fsilence_$$.wav
 	echo "F $fname"
-	$executable_path "/tmp/fsilence_$$.wav" $threshold $duration | sort -n $sort_key
+	$executable_path "/tmp/fsilence_$$.wav" $threshold $si_duration $so_duration | sort -n $sort_key
+	
 done
 
-rm "/tmp/fsilence_$$.wav"
+if [ -f "/tmp/fsilence_$$.wav" ]
+then
+	rm "/tmp/fsilence_$$.wav"
+fi

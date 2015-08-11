@@ -5,7 +5,7 @@
 
 #include <SDL/SDL.h>
 
-// #include "findSilence_test.h"
+#include "findSilence_test.h"
 
 #define MIN_FREQUENCY 200
 #define MAX_FREQUENCY 4000
@@ -139,8 +139,9 @@ double *get_channel( struct audio_file *a_file, uint c )
 {
 	double *s_data = (double *) malloc( a_file->samples_count * sizeof(double) );
 	uint i;
-
+	
 	for ( i = 0; i < a_file->samples_count; ++i )
+	{
 		switch( a_file->format )
 		{
 		case AUDIO_S8:
@@ -150,7 +151,8 @@ double *get_channel( struct audio_file *a_file, uint c )
 			s_data[i] = ((int16_t *) a_file->raw_data)[i*a_file->channels + c];
 			break;
 		}
-
+	}
+	
 	return s_data; 
 }
 
@@ -169,14 +171,15 @@ struct audio_file load_file( char *fname )
 
 	a_file.raw_data = (void *) wav_buffer;
 
-	a_file.samples_count = wav_length;
-	
-	if ( a_file.format != AUDIO_S16 )
-		a_file.samples_count /= 2;
-		
+	a_file.samples_count = wav_length;	
 	a_file.format = wav_spec.format;
 	a_file.frequency = wav_spec.freq;
 	a_file.channels = wav_spec.channels;
+	
+	if ( a_file.format == AUDIO_S16 )
+		a_file.samples_count /= 2;
+
+	a_file.samples_count /= a_file.channels;	
 
 	if ( a_file.format != AUDIO_S16
 		&& a_file.format != AUDIO_S8 )
@@ -184,7 +187,7 @@ struct audio_file load_file( char *fname )
 		fprintf( stderr, "PCM not supported\n" );
 		exit( 3 );
 	}
-
+	
 	return a_file;
 }
 
@@ -391,27 +394,28 @@ uint *find_silence( double *sample_data, uint len, uint part_len )
 	return silence;
 }
 
-void remove_short_ranges( uint *silence, uint len, uint min_len )
+void remove_short_ranges( uint *silence, uint len,
+	uint min_len_si, uint val )
 {
 	uint *tmp_pr, *tmp;
 
-	for ( tmp = silence; ; ++tmp )
+	for ( tmp = silence; tmp < (silence + len); ++tmp )
 	{
 		tmp_pr = tmp;
-		uint c = 0;
-
-		while ( *tmp != 0 && tmp < (silence + len) )
+		uint c;
+	
+		c = 0;
+		while ( *tmp == val && tmp < (silence + len) )
 		{
 			++tmp;
 			++c;
 		}
 			
-		if ( tmp >= (silence + len) )
-			break;
+		tmp = (tmp < (silence + len)) ? tmp : (silence + len);
 
-		if ( c < min_len )
+		if ( c < min_len_si )
 			for ( ; tmp_pr != tmp; ++tmp_pr )
-				*tmp_pr = 0;	
+				*tmp_pr = !val;	
 	}
 }
 
@@ -419,19 +423,19 @@ int main( int argc, char **argv )
 {
 	struct audio_file a_file;
 	double border;
-	double min_len_secs;
+	double min_len_si_secs;
+	double min_len_so_secs;
 	int i, j;
 	
 	init_SDL();
-	
+
 	a_file = load_file( argv[1] );
 	border = atof( argv[2] );
-	min_len_secs = atof( argv[3] );
-
+	min_len_si_secs = atof( argv[3] );
+	min_len_so_secs = atof( argv[4] );
 
 	for ( i = 0; i < a_file.channels; ++i )
 	{
-
 		double *sample_data = get_channel( &a_file, i );
 		uint len =  a_file.samples_count;
 		uint d;
@@ -465,10 +469,13 @@ int main( int argc, char **argv )
 			silence = find_silence( sample_data, len, part_len );
 		}
 	
-		uint min_len = min_len_secs * a_file.frequency
+		uint min_len_si = min_len_si_secs * a_file.frequency
 			* len / a_file.samples_count;
-	
-		remove_short_ranges( silence, len, min_len );
+		uint min_len_so = min_len_so_secs * a_file.frequency
+			* len / a_file.samples_count;
+
+		remove_short_ranges( silence, len, min_len_si, 1 );
+		remove_short_ranges( silence, len, min_len_so, 0 );
 
 		print_output( silence, len, i, &a_file );
 
@@ -476,7 +483,7 @@ int main( int argc, char **argv )
 /*
 		draw_signal( sample_data, len, silence );
 		draw_histogram( sample_data, len );
-	
+
 		int16_t *raw_data = (int16_t *) a_file.raw_data;
 		
 		for ( i = 0; i < a_file.samples_count; ++i )
@@ -496,10 +503,10 @@ int main( int argc, char **argv )
 
 		while ( fgetc(stdin) != EOF ) {}
 */
-
-		SDL_CloseAudio();
-		SDL_FreeWAV( a_file.raw_data );
 	}
+
+	SDL_CloseAudio();
+	SDL_FreeWAV( a_file.raw_data );
 
 	return 0;
 }
