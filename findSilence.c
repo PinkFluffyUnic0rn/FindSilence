@@ -5,10 +5,10 @@
 
 #include <SDL/SDL.h>
 
-#include "findSilence_test.h"
+// #include "findSilence_test.h"
 
-#define MIN_FREQUENCY 200
-#define MAX_FREQUENCY 4000
+#define MIN_FREQUENCY (200 * 2)
+#define MAX_FREQUENCY (4000 * 2)
 
 #define SECS_IN_PART 5
 #define MEANS_IN_PART 10
@@ -105,7 +105,7 @@ double *to_borders( double *sample_data, uint len )
 	}
 
 	for ( i = 0; i < len; ++i )
-		sample_data[i] /= abs(max-min) / 1000;
+		sample_data[i] /= abs(max-min) / 1000.0;
 	
 	return sample_data;
 }
@@ -141,7 +141,6 @@ double *get_channel( struct audio_file *a_file, uint c )
 	uint i;
 	
 	for ( i = 0; i < a_file->samples_count; ++i )
-	{
 		switch( a_file->format )
 		{
 		case AUDIO_S8:
@@ -151,7 +150,6 @@ double *get_channel( struct audio_file *a_file, uint c )
 			s_data[i] = ((int16_t *) a_file->raw_data)[i*a_file->channels + c];
 			break;
 		}
-	}
 	
 	return s_data; 
 }
@@ -225,7 +223,6 @@ void assign_centroids( double *sample_data, uint *sample_centroids, uint len,
 				min_dist = dist;
 				min_id = j;
 			}
-
 		}
 
 		sample_centroids[i] = min_id;
@@ -447,10 +444,10 @@ int main( int argc, char **argv )
 
 		to_borders( sample_data, len );
 
-		d = a_file.frequency / d / MIN_FREQUENCY;
+		d = MAX_FREQUENCY / MIN_FREQUENCY;
 		sample_data = signal_derivitive_sqr( sample_data, len, d );
 		len /= d;
-
+		
 		if ( border > 0.0 )
 		{
 			d = MIN_FREQUENCY/10;
@@ -469,10 +466,10 @@ int main( int argc, char **argv )
 			silence = find_silence( sample_data, len, part_len );
 		}
 	
-		uint min_len_si = min_len_si_secs * a_file.frequency
-			* len / a_file.samples_count;
-		uint min_len_so = min_len_so_secs * a_file.frequency
-			* len / a_file.samples_count;
+		uint min_len_si = min_len_si_secs * (double) (a_file.frequency)
+			* (double) len / (double) (a_file.samples_count);
+		uint min_len_so = min_len_so_secs * (double) (a_file.frequency)
+			* (double) len / (double) (a_file.samples_count);
 
 		remove_short_ranges( silence, len, min_len_si, 1 );
 		remove_short_ranges( silence, len, min_len_so, 0 );
