@@ -1,3 +1,6 @@
+#ifndef FIND_SILENCE_TEST_H
+#define FIND_SILENCE_TEST_H
+
 #include <cairo.h>
 #include <gtk/gtk.h>
 
@@ -22,23 +25,31 @@ void draw_signal( double *sample_data, uint len, uint *silence )
 	cairo_surface_t *csur;
 	struct rgb *image_data;
 	struct rgb blue = { 255, 0, 0, 255 }, red = { 0, 0, 255, 255 };
+	double max, min;
 	int i, j;	
 
 	csur = cairo_image_surface_create( CAIRO_FORMAT_RGB24, WIDTH, HEIGHT );
 	image_data = ((struct rgb *) cairo_image_surface_get_data( csur ));
 
+	max = min = sample_data[0];
+	for ( i = 0; i < len; ++i )
+	{
+		max = (sample_data[i] > max) ? sample_data[i] : max;
+		min = (sample_data[i] < min) ? sample_data[i] : min;
+	}
+
 	for ( i = 0; i < HEIGHT; ++i )
 		for ( j = 0; j < WIDTH; ++j )
 		{
-			image_data[i*WIDTH+j].a = 255;
-			image_data[i*WIDTH+j].r = 0;
-			image_data[i*WIDTH+j].g = 0;
-			image_data[i*WIDTH+j].b = 0;
+			image_data[i * WIDTH + j].a = 255;
+			image_data[i * WIDTH + j].r = 0;
+			image_data[i * WIDTH + j].g = 0;
+			image_data[i * WIDTH + j].b = 0;
 		}
 
 	for ( i = 0; i < len; ++i )
 	{
-		int val = HEIGHT - 1 - sample_data[i] * 0.5;
+		int val = HEIGHT - 1 - sample_data[i] * HEIGHT / (max - min);
 		int y = val;
 		int x = (double)((WIDTH-1) * i) / (double)(len);
 		
@@ -103,31 +114,50 @@ void draw_histogram( double *sample_data, uint len )
 	cairo_surface_write_to_png( csur, "Histogram" );	
 }
 
+void silence_to_zero( struct audio_file *a_file, uint *silence, uint len )
+{
+	int i;
+
+	for ( i = 0; i < a_file->samples_count; ++i )
+		if ( silence[i/(a_file->samples_count/len)] )
+			switch( a_file->format )
+			{
+			case AUDIO_S8:
+				((int8_t *) (a_file->raw_data))[i*a_file->channels] = 0;
+				break;
+			case AUDIO_S16:
+				((int16_t *) (a_file->raw_data))[i*a_file->channels] = 0;
+				break;
+			}
+}
+
 void my_audio_callback( void *userdata, Uint8 *stream, int len )
 {
 	struct audio_play *play = (struct audio_play *) userdata;	
 
-	if ( play->audio_len == 0 )
-		return;
-
 	len = ( len > play->audio_len ? play->audio_len : len );
-	SDL_MixAudio( stream, play->audio_pos, len, SDL_MIX_MAXVOLUME );
+	memcpy( stream, play->audio_pos, len );
 	
 	play->audio_pos += len;
 	play->audio_len -= len;
 }
 
-void play_audio( SDL_AudioSpec *wav_spec, int8_t *wav_buffer, uint32_t len )
+void play_audio( struct audio_file *a_file, uint32_t len )
 {
 	struct audio_play *play = malloc( sizeof(struct audio_play) );	
+	SDL_AudioSpec audio_spec;
 
-	wav_spec->callback = my_audio_callback;
-	wav_spec->userdata = play;
+	audio_spec.freq = a_file->frequency;
+	audio_spec.format = a_file->format;
+	audio_spec.channels = a_file->channels;
+	audio_spec.samples = 4096;
+	audio_spec.callback = my_audio_callback;
+	audio_spec.userdata = play;
 	
-	play->audio_pos = wav_buffer;
+	play->audio_pos = a_file->raw_data;
 	play->audio_len = len;
 	
-	if ( SDL_OpenAudio(wav_spec, NULL) < 0 )
+	if ( SDL_OpenAudio(&audio_spec, NULL) < 0 )
 	{
 		fprintf( stderr, "Couldn't open audio: %s\n", SDL_GetError() );
 		exit(-1);
@@ -135,3 +165,5 @@ void play_audio( SDL_AudioSpec *wav_spec, int8_t *wav_buffer, uint32_t len )
 	
 	SDL_PauseAudio(0);
 }
+
+#endif

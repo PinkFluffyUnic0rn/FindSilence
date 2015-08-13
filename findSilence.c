@@ -5,8 +5,6 @@
 
 #include <SDL/SDL.h>
 
-// #include "findSilence_test.h"
-
 #define MIN_FREQUENCY (200 * 2)
 #define MAX_FREQUENCY (4000 * 2)
 
@@ -21,6 +19,10 @@ struct audio_file
 	uint16_t format;
 	uint channels;
 };
+
+#ifdef DEBUG
+#include "findSilence_test.h"
+#endif
 
 void print_event( uint c, uint i, char ev, uint frequency )
 {
@@ -47,8 +49,7 @@ void print_output( uint *silence, uint len, uint c, struct audio_file *a_file )
 				* (double) (a_file->samples_count)
 				/ (double) len;
 
-			print_event( c, cur_sample,
-				type, a_file->frequency );
+			print_event( c, cur_sample, type, a_file->frequency );
 		}
 	}
 
@@ -69,7 +70,7 @@ double derivite_sqr( double *sample_data, uint beg, uint end )
 		s += a * a;
 	}
 	
-	return s / pow( (double)(end - beg), 2.0 );
+	return s / pow( (double)(end - beg), 1.0 );
 }
 
 double *signal_derivitive_sqr( double *sample_data, uint len, uint d )
@@ -175,12 +176,11 @@ struct audio_file load_file( char *fname )
 	a_file.channels = wav_spec.channels;
 	
 	if ( a_file.format == AUDIO_S16 )
-		a_file.samples_count /= 2;
+		a_file.samples_count /= sizeof(int16_t);
 
 	a_file.samples_count /= a_file.channels;	
 
-	if ( a_file.format != AUDIO_S16
-		&& a_file.format != AUDIO_S8 )
+	if ( a_file.format != AUDIO_S16 && a_file.format != AUDIO_S8 )
 	{
 		fprintf( stderr, "PCM not supported\n" );
 		exit( 3 );
@@ -283,26 +283,28 @@ void init_centroids( uint *hist, double *means,
 		return;
 
 	s0 = 0;
-	for ( i = min; i < max/2; ++i )
+	for ( i = min; i < max / 2; ++i )
 		s0 += hist[i];
 
 	s1 = 0;
-	for ( i = max/2; i < max; ++i )
+	for ( i = max / 2; i < max; ++i )
 		s1 += hist[i];
 
-	p0 = (double)s0/(double)(s0+s1);
-	p1 = (double)s1/(double)(s0+s1);
+	p0 = (double) s0 / (double) (s0+s1);
+	p1 = (double) s1 / (double) (s0+s1);
 
-	k0 = floor(p0*(double)k + 0.5);
-	k1 = floor(p1*(double)k + 0.5);
+	k0 = floor(p0 * (double) k + 0.5);
+	k1 = floor(p1 * (double) k + 0.5);
 
-	if ( (double) s0 / (double)(k0) > 50.0
-		&& (double)((max+min)/2 - min) / (double)(k0) > 30.0
-		&& (double) s1 / (double)(k1) > 50.0 
-		&& (double)(max - (max+min)/2) / (double)(k1) > 30.0 )
+	if ( (double) s0 / (double) k0 > 50.0
+		&& (double)((max + min) / 2 - min) / (double) k0 > 30.0
+		&& (double) s1 / (double) k1 > 50.0 
+		&& (double)(max - (max + min) / 2) / (double) k1 > 30.0 )
 	{
-		init_centroids( hist, means, k_min, k_min + k0, min, (max+min)/2 );
-		init_centroids( hist, means, k_min + k0, k_max, (max+min)/2, max );
+		init_centroids( hist, means, k_min, k_min + k0, min,
+			(max + min) / 2 );
+		init_centroids( hist, means, k_min + k0, k_max,
+			(max + min) / 2, max );
 	}
 	else
 	{
@@ -310,7 +312,7 @@ void init_centroids( uint *hist, double *means,
 
 		means[k_min] = min;
 		for ( i = k_min + 1; i < k_max; ++i )
-			means[i] = means[i-1] + d;
+			means[i] = means[i - 1] + d;
 
 		return;
 	}
@@ -438,11 +440,12 @@ int main( int argc, char **argv )
 		uint d;
 		uint *silence;
 
+		to_borders( sample_data, len );
+		
 		d = a_file.frequency / MAX_FREQUENCY;
 		sample_data = smooth_signal( sample_data, len, d );
 		len /= d;	
 
-		to_borders( sample_data, len );
 
 		d = MAX_FREQUENCY / MIN_FREQUENCY;
 		sample_data = signal_derivitive_sqr( sample_data, len, d );
@@ -450,7 +453,7 @@ int main( int argc, char **argv )
 		
 		if ( border > 0.0 )
 		{
-			d = MIN_FREQUENCY/10;
+			d = MIN_FREQUENCY / 10;
 			sample_data = signal_derivitive_sqr( sample_data, len, d );
 			len /= d;
 
@@ -477,29 +480,15 @@ int main( int argc, char **argv )
 		print_output( silence, len, i, &a_file );
 
 // for testing //
-/*
+#ifdef DEBUG
 		draw_signal( sample_data, len, silence );
 		draw_histogram( sample_data, len );
+		silence_to_zero( &a_file, silence, len );
 
-		int16_t *raw_data = (int16_t *) a_file.raw_data;
+		play_audio( &a_file, a_file.samples_count*2 );
 		
-		for ( i = 0; i < a_file.samples_count; ++i )
-			if ( silence[i/(a_file.samples_count/len)] )
-				raw_data[i*a_file.channels] = 0;
-
-		printf( "%s\n", "EOF to stop playing" );
-
-		SDL_AudioSpec audio_spec;
-		audio_spec.freq = a_file.frequency;
-		audio_spec.format = a_file.format;
-		audio_spec.channels = a_file.channels;
-		audio_spec.samples = 4096;
-		audio_spec.samples = a_file.samples_count*2;
-		
-		play_audio( &audio_spec, (int8_t *) raw_data, a_file.samples_count*2 );
-
-		while ( fgetc(stdin) != EOF ) {}
-*/
+		fgetc(stdin);
+#endif
 	}
 
 	SDL_CloseAudio();
