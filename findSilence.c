@@ -30,7 +30,8 @@ void print_event( uint c, uint i, char ev, uint frequency )
 	printf( "%u %u %c\n", c, t, ev );
 }
 
-void print_output( uint *silence, uint len, uint c, struct audio_file *a_file )
+void print_output( const uint *silence, uint len, uint c,
+	const struct audio_file *a_file )
 {
 	char type = 'q';
 	char prev_type;
@@ -57,10 +58,9 @@ void print_output( uint *silence, uint len, uint c, struct audio_file *a_file )
 }
 
 
-double derivite_sqr( double *sample_data, uint beg, uint end )
+double derivite_sqr( const double *sample_data, uint beg, uint end )
 {
 	double s = 0;
-	double avr = 0.0f;
 	uint i;
 
 	for ( i = beg; (i + 1) < end; ++i )
@@ -73,7 +73,7 @@ double derivite_sqr( double *sample_data, uint beg, uint end )
 	return s / pow( (double)(end - beg), 1.0 );
 }
 
-double *signal_derivitive_sqr( double *sample_data, uint len, uint d )
+void signal_derivitive_sqr( double **sample_data, uint len, uint d )
 {
 	uint newlen = len / d + ((len % d) ? 1 : 0);
 	double *d_sig = (double *) malloc( sizeof(double) * newlen );
@@ -85,12 +85,12 @@ double *signal_derivitive_sqr( double *sample_data, uint len, uint d )
 		if ( (i + d) >= len )
 			d = len - i;
 		
-		d_sig[j++] = derivite_sqr( sample_data, i, i + d );
+		d_sig[j++] = derivite_sqr( *sample_data, i, i + d );
 	}
 
-	free( sample_data );
+	free( *sample_data );
 
-	return d_sig;
+	*sample_data = d_sig;
 }
 
 double *to_borders( double *sample_data, uint len )
@@ -111,7 +111,7 @@ double *to_borders( double *sample_data, uint len )
 	return sample_data;
 }
 
-double average( double *sample_data, uint b, uint e )
+double average( const double *sample_data, uint b, uint e )
 {
 	double s = 0;
 	uint i;
@@ -122,23 +122,24 @@ double average( double *sample_data, uint b, uint e )
 	return s / (e - b);
 }
 
-double *smooth_signal( double *in_data, uint samples_count, uint d )
+void smooth_signal( double **in_data, uint samples_count, uint d )
 {
 	double *out_data = (double *) malloc( sizeof(double)
 		* samples_count / d );
 	uint i;
 
 	for ( i = 0; (i+d) < samples_count; i += d )
-		out_data[i/d] = average( in_data, i, i + d );
+		out_data[i/d] = average( *in_data, i, i + d );
 
-	free( in_data );
+	free( *in_data );
 
-	return out_data;
+	*in_data = out_data;
 }
 
-double *get_channel( struct audio_file *a_file, uint c )
+double *get_channel( const struct audio_file *a_file, uint c )
 {
-	double *s_data = (double *) malloc( a_file->samples_count * sizeof(double) );
+	double *s_data
+		= (double *) malloc( a_file->samples_count * sizeof(double) );
 	uint i;
 	
 	for ( i = 0; i < a_file->samples_count; ++i )
@@ -155,7 +156,7 @@ double *get_channel( struct audio_file *a_file, uint c )
 	return s_data; 
 }
 
-struct audio_file load_file( char *fname )
+struct audio_file load_file( const char *fname )
 {
 	struct audio_file a_file;
 	Uint32 wav_length;
@@ -204,8 +205,8 @@ double metric( double a, double b )
 	return pow( a - b, 2.0 );
 }
 
-void assign_centroids( double *sample_data, uint *sample_centroids, uint len,
-	double *means, uint k )
+void assign_centroids( const double *sample_data, uint *sample_centroids,
+	uint len, const double *means, uint k )
 {
 	int i, j;
 
@@ -229,8 +230,8 @@ void assign_centroids( double *sample_data, uint *sample_centroids, uint len,
 	}
 }
 
-int recompute_centroids( double *sample_data, uint *sample_centroids, uint len,
-	double *means, uint k )
+int recompute_centroids( const double *sample_data,
+	const uint *sample_centroids, uint len, double *means, uint k )
 {
 	double *s = malloc( sizeof(double) * k );
 	uint *n = malloc( sizeof(double) * k );
@@ -270,7 +271,7 @@ int recompute_centroids( double *sample_data, uint *sample_centroids, uint len,
 	return stop;
 }
 
-void init_centroids( uint *hist, double *means,
+void init_centroids( const uint *hist, double *means,
 	uint k_min, uint k_max, uint min, uint max )
 {
 	uint s0, s1;
@@ -297,9 +298,9 @@ void init_centroids( uint *hist, double *means,
 	k1 = floor(p1 * (double) k + 0.5);
 
 	if ( (double) s0 / (double) k0 > 50.0
-		&& (double)((max + min) / 2 - min) / (double) k0 > 30.0
+		&& (double)((max + min) / 2 - min) / (double) k0 > 10.0
 		&& (double) s1 / (double) k1 > 50.0 
-		&& (double)(max - (max + min) / 2) / (double) k1 > 30.0 )
+		&& (double)(max - (max + min) / 2) / (double) k1 > 10.0 )
 	{
 		init_centroids( hist, means, k_min, k_min + k0, min,
 			(max + min) / 2 );
@@ -319,7 +320,7 @@ void init_centroids( uint *hist, double *means,
 
 }
 
-uint *k_means( double *sample_data, uint len, uint k, double **means )
+uint *k_means( const double *sample_data, uint len, uint k, double **means )
 {
 	*means = malloc( sizeof(double) * k );
 	uint *sample_centroids = malloc( sizeof(double) * len );
@@ -361,7 +362,7 @@ uint *k_means( double *sample_data, uint len, uint k, double **means )
 	return sample_centroids;
 }
 
-uint *find_silence( double *sample_data, uint len, uint part_len )
+uint *find_silence( const double *sample_data, uint len, uint part_len )
 {
 	uint k = MEANS_IN_PART;
 	uint *silence = malloc( sizeof(uint) * len );
@@ -418,7 +419,7 @@ void remove_short_ranges( uint *silence, uint len,
 	}
 }
 
-int main( int argc, char **argv )
+int main( int argc, const char **argv )
 {
 	struct audio_file a_file;
 	double border;
@@ -436,25 +437,25 @@ int main( int argc, char **argv )
 	for ( i = 0; i < a_file.channels; ++i )
 	{
 		double *sample_data = get_channel( &a_file, i );
-		uint len =  a_file.samples_count;
+		uint len = a_file.samples_count;
 		uint d;
 		uint *silence;
 
 		to_borders( sample_data, len );
 		
 		d = a_file.frequency / MAX_FREQUENCY;
-		sample_data = smooth_signal( sample_data, len, d );
+		smooth_signal( &sample_data, len, d );
 		len /= d;	
 
 
 		d = MAX_FREQUENCY / MIN_FREQUENCY;
-		sample_data = signal_derivitive_sqr( sample_data, len, d );
+		signal_derivitive_sqr( &sample_data, len, d );
 		len /= d;
 		
 		if ( border > 0.0 )
 		{
 			d = MIN_FREQUENCY / 10;
-			sample_data = signal_derivitive_sqr( sample_data, len, d );
+			signal_derivitive_sqr( &sample_data, len, d );
 			len /= d;
 
 			silence = malloc( sizeof(uint) * len );
