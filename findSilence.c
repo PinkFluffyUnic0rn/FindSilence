@@ -8,8 +8,9 @@
 #define MIN_FREQUENCY (200 * 2)
 #define MAX_FREQUENCY (4000 * 2)
 
-#define SECS_IN_PART 5
+#define SECS_IN_PART 3.0
 #define MEANS_IN_PART 10
+#define CLUSTER_DENSITY 60.0
 
 struct audio_file
 {
@@ -297,9 +298,9 @@ void init_centroids( const uint *hist, double *means,
 	k0 = floor(p0 * (double) k + 0.5);
 	k1 = floor(p1 * (double) k + 0.5);
 
-	if ( (double) s0 / (double) k0 > 50.0
+	if ( (double) s0 / (double) k0 > CLUSTER_DENSITY
 		&& (double)((max + min) / 2 - min) / (double) k0 > 10.0
-		&& (double) s1 / (double) k1 > 50.0 
+		&& (double) s1 / (double) k1 > CLUSTER_DENSITY 
 		&& (double)(max - (max + min) / 2) / (double) k1 > 10.0 )
 	{
 		init_centroids( hist, means, k_min, k_min + k0, min,
@@ -446,7 +447,6 @@ int main( int argc, const char **argv )
 		d = a_file.frequency / MAX_FREQUENCY;
 		smooth_signal( &sample_data, len, d );
 		len /= d;	
-
 
 		d = MAX_FREQUENCY / MIN_FREQUENCY;
 		signal_derivitive_sqr( &sample_data, len, d );
