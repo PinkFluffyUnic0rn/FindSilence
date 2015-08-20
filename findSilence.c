@@ -193,12 +193,21 @@ struct audio_file load_file( const char *fname )
 
 void init_SDL()
 {
+#ifdef DEBUG
+	if ( SDL_Init(0) < 0 )
+	{
+		fprintf( stderr, "Cannot initilize SDL: %s\n",
+			SDL_GetError() );
+		exit( 1 );
+	}
+#else
 	if ( SDL_Init(SDL_INIT_AUDIO) < 0 )
 	{
 		fprintf( stderr, "Cannot initilize SDL: %s\n",
 			SDL_GetError() );
 		exit( 1 );
 	}
+#endif
 }
 
 double metric( double a, double b )
@@ -491,8 +500,9 @@ int main( int argc, const char **argv )
 		fgetc(stdin);
 #endif
 	}
-
+#ifdef DEBUG
 	SDL_CloseAudio();
+#endif
 	SDL_FreeWAV( a_file.raw_data );
 
 	return 0;
