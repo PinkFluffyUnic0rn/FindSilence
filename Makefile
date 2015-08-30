@@ -1,7 +1,7 @@
 all: release
 
 release:
-	gcc findSilence.c -o findsilence -Wall -lm -lSDL
+	gcc findSilence.c -o findsilence -Wall -lm
 
 debug:
 	gcc findSilence.c -o findsilence -Wall -D DEBUG \

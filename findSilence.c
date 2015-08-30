@@ -2,8 +2,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <stdint.h>
-
-#include <SDL/SDL.h>
+#include <string.h>
 
 #define MIN_FREQUENCY (200 * 2)
 #define MAX_FREQUENCY (4000 * 2)
@@ -17,11 +16,12 @@ struct audio_file
 	void *raw_data;
 	uint samples_count;
 	uint frequency;
-	uint16_t format;
+	uint depth;
 	uint channels;
 };
 
 #ifdef DEBUG
+#include <SDL/SDL.h>
 #include "findSilence_test.h"
 #endif
 
@@ -37,7 +37,7 @@ void print_output( const uint *silence, uint len, uint c,
 	char type = 'q';
 	char prev_type;
 	uint i;
-
+	
 	print_event( c, 0, 'b', a_file->frequency );
 	
 	for ( i = 0; i < len; ++i )
@@ -71,7 +71,7 @@ double derivite_sqr( const double *sample_data, uint beg, uint end )
 		s += a * a;
 	}
 	
-	return s / pow( (double)(end - beg), 1.0 );
+	return s / pow( (double)(end - beg), 2.0 );
 }
 
 void signal_derivitive_sqr( double **sample_data, uint len, uint d )
@@ -144,12 +144,12 @@ double *get_channel( const struct audio_file *a_file, uint c )
 	uint i;
 	
 	for ( i = 0; i < a_file->samples_count; ++i )
-		switch( a_file->format )
+		switch( a_file->depth )
 		{
-		case AUDIO_S8:
+		case 1:
 			s_data[i] = ((int8_t *) a_file->raw_data)[i*a_file->channels + c];
 			break;
-		case AUDIO_S16:
+		case 2:
 			s_data[i] = ((int16_t *) a_file->raw_data)[i*a_file->channels + c];
 			break;
 		}
@@ -157,57 +157,89 @@ double *get_channel( const struct audio_file *a_file, uint c )
 	return s_data; 
 }
 
-struct audio_file load_file( const char *fname )
+void load_wav( const char *fname, struct audio_file *a_file )
 {
-	struct audio_file a_file;
-	Uint32 wav_length;
-	Uint8 *wav_buffer;
-	SDL_AudioSpec wav_spec;
+	FILE *file;
+	char buf[255];
+	uint pcm;
 	
-	if( SDL_LoadWAV(fname, &wav_spec, &wav_buffer, &wav_length) == NULL )
+	memset( a_file, 0, sizeof(struct audio_file) );
+
+	file = fopen( fname, "r" );
+	if ( file == NULL )
 	{
-		fprintf( stderr, "Cannot load file\n" );
-		exit( 2 );	
+		fprintf( stderr, "Cannot load file\n" ); 
+		exit( 2 );
 	}
 
-	a_file.raw_data = (void *) wav_buffer;
+	fseek( file, 0, SEEK_END );
+	if ( ftell(file) < 44 )
+	{
+		fprintf( stderr, "File format not supported\n" ); 
+		exit( 2 );
+	}
+	fseek( file, 0, SEEK_SET );
 
-	a_file.samples_count = wav_length;	
-	a_file.format = wav_spec.format;
-	a_file.frequency = wav_spec.freq;
-	a_file.channels = wav_spec.channels;
+
+	fread( buf, sizeof(char), 4, file );	
+	if ( strncmp(buf, "RIFF", 4) )
+	{
+		fprintf( stderr, "File format not supported\n" ); 
+		exit( 2 );
+	}
+
+	fseek( file, 4, SEEK_CUR );
 	
-	if ( a_file.format == AUDIO_S16 )
-		a_file.samples_count /= sizeof(int16_t);
-
-	a_file.samples_count /= a_file.channels;	
-
-	if ( a_file.format != AUDIO_S16 && a_file.format != AUDIO_S8 )
+	fread( buf, sizeof(char), 4, file );
+	if ( strncmp(buf, "WAVE", 4) )
 	{
-		fprintf( stderr, "PCM not supported\n" );
-		exit( 3 );
+		fprintf( stderr, "File format not supported\n" ); 
+		exit( 2 );
 	}
+
+	fread( buf, sizeof(char), 4, file );
+	if ( strncmp(buf, "fmt", 3) )
+	{
+		fprintf( stderr, "File format not supported\n" ); 
+		exit( 2 );
+	}
+
+	fseek( file, 4, SEEK_CUR );
+
+	fread( &pcm, sizeof(char), 2, file );
+	if ( pcm != 1 )
+	{
+		fprintf( stderr, "File format not supported\n" ); 
+		exit( 2 );
+	}
+
+	fread( &(a_file->channels), sizeof(char), 2, file );
 	
-	return a_file;
-}
+	fread( &(a_file->frequency), sizeof(char), 4, file );
+	
+	fseek( file, 4, SEEK_CUR );
+	
+	fread( &(a_file->depth), sizeof(char), 2, file );
 
-void init_SDL()
-{
-#ifdef DEBUG
-	if ( SDL_Init(0) < 0 )
+	fseek( file, 2, SEEK_CUR );
+	
+	fread( buf, sizeof(char), 4, file );
+	if ( strncmp(buf, "data", 4) )
 	{
-		fprintf( stderr, "Cannot initilize SDL: %s\n",
-			SDL_GetError() );
-		exit( 1 );
+		fprintf( stderr, "File format not supported\n" ); 
+		exit( 2 );
 	}
-#else
-	if ( SDL_Init(SDL_INIT_AUDIO) < 0 )
-	{
-		fprintf( stderr, "Cannot initilize SDL: %s\n",
-			SDL_GetError() );
-		exit( 1 );
-	}
-#endif
+
+	fread( &(a_file->samples_count), sizeof(char), 4, file );
+
+	a_file->raw_data = malloc( a_file->samples_count );
+	
+	fread( a_file->raw_data, sizeof(char), a_file->samples_count, file );
+
+	a_file->samples_count /= a_file->depth;
+	a_file->depth /= a_file->channels;
+
+	fclose( file );
 }
 
 double metric( double a, double b )
@@ -327,7 +359,6 @@ void init_centroids( const uint *hist, double *means,
 
 		return;
 	}
-
 }
 
 uint *k_means( const double *sample_data, uint len, uint k, double **means )
@@ -437,13 +468,11 @@ int main( int argc, const char **argv )
 	double min_len_so_secs;
 	int i, j;
 	
-	init_SDL();
-
-	a_file = load_file( argv[1] );
+	load_wav( argv[1], &a_file );
 	border = atof( argv[2] );
 	min_len_si_secs = atof( argv[3] );
 	min_len_so_secs = atof( argv[4] );
-
+	
 	for ( i = 0; i < a_file.channels; ++i )
 	{
 		double *sample_data = get_channel( &a_file, i );
@@ -491,19 +520,27 @@ int main( int argc, const char **argv )
 
 // for testing //
 #ifdef DEBUG
+		if ( SDL_Init(SDL_INIT_AUDIO) < 0 )
+		{
+			fprintf( stderr, "Cannot initilize SDL: %s\n",
+				SDL_GetError() );
+			exit( 1 );
+		}
+		
 		draw_signal( sample_data, len, silence );
 		draw_histogram( sample_data, len );
+
 		silence_to_zero( &a_file, silence, len );
 
 		play_audio( &a_file, a_file.samples_count*2 );
 		
 		fgetc(stdin);
+
+		SDL_CloseAudio();
 #endif
 	}
-#ifdef DEBUG
-	SDL_CloseAudio();
-#endif
-	SDL_FreeWAV( a_file.raw_data );
+
+	free( a_file.raw_data );
 
 	return 0;
 }

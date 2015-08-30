@@ -109,7 +109,6 @@ do
 	sox $fname -e signed-integer /tmp/fsilence_$$.wav
 	echo "F $fname"
 	$executable_path "/tmp/fsilence_$$.wav" $threshold $si_duration $so_duration | sort -n $sort_key
-	
 done
 
 if [ -f "/tmp/fsilence_$$.wav" ]

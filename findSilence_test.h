@@ -120,12 +120,12 @@ void silence_to_zero( struct audio_file *a_file, uint *silence, uint len )
 
 	for ( i = 0; i < a_file->samples_count; ++i )
 		if ( silence[i/(a_file->samples_count/len)] )
-			switch( a_file->format )
+			switch ( a_file->depth )
 			{
-			case AUDIO_S8:
+			case 1:
 				((int8_t *) (a_file->raw_data))[i*a_file->channels] = 0;
 				break;
-			case AUDIO_S16:
+			case 2:
 				((int16_t *) (a_file->raw_data))[i*a_file->channels] = 0;
 				break;
 			}
@@ -148,7 +148,16 @@ void play_audio( struct audio_file *a_file, uint32_t len )
 	SDL_AudioSpec audio_spec;
 
 	audio_spec.freq = a_file->frequency;
-	audio_spec.format = a_file->format;
+
+	switch ( a_file->depth )
+	{
+	case 1:
+		audio_spec.format = AUDIO_S8;
+		break;
+	case 2:
+		audio_spec.format = AUDIO_S16;
+		break;
+	}
 	audio_spec.channels = a_file->channels;
 	audio_spec.samples = 4096;
 	audio_spec.callback = my_audio_callback;
