@@ -169,14 +169,14 @@ void load_wav( const char *fname, struct audio_file *a_file )
 	if ( file == NULL )
 	{
 		fprintf( stderr, "Cannot load file\n" ); 
-		exit( 2 );
+		exit( 0x02 );
 	}
 
 	fseek( file, 0, SEEK_END );
 	if ( ftell(file) < 44 )
 	{
 		fprintf( stderr, "File format not supported\n" ); 
-		exit( 2 );
+		exit( 0x12 );
 	}
 	fseek( file, 0, SEEK_SET );
 
@@ -185,7 +185,7 @@ void load_wav( const char *fname, struct audio_file *a_file )
 	if ( strncmp(buf, "RIFF", 4) )
 	{
 		fprintf( stderr, "File format not supported\n" ); 
-		exit( 2 );
+		exit( 0x22 );
 	}
 
 	fseek( file, 4, SEEK_CUR );
@@ -194,14 +194,14 @@ void load_wav( const char *fname, struct audio_file *a_file )
 	if ( strncmp(buf, "WAVE", 4) )
 	{
 		fprintf( stderr, "File format not supported\n" ); 
-		exit( 2 );
+		exit( 0x32 );
 	}
 
 	fread( buf, sizeof(char), 4, file );
 	if ( strncmp(buf, "fmt", 3) )
 	{
 		fprintf( stderr, "File format not supported\n" ); 
-		exit( 2 );
+		exit( 0x42 );
 	}
 
 	fseek( file, 4, SEEK_CUR );
@@ -210,7 +210,7 @@ void load_wav( const char *fname, struct audio_file *a_file )
 	if ( pcm != 1 )
 	{
 		fprintf( stderr, "File format not supported\n" ); 
-		exit( 2 );
+		exit( 0x52 );
 	}
 
 	fread( &(a_file->channels), sizeof(char), 2, file );
@@ -227,7 +227,7 @@ void load_wav( const char *fname, struct audio_file *a_file )
 	if ( strncmp(buf, "data", 4) )
 	{
 		fprintf( stderr, "File format not supported\n" ); 
-		exit( 2 );
+		exit( 0x62 );
 	}
 
 	fread( &(a_file->samples_count), sizeof(char), 4, file );
