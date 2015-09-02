@@ -106,7 +106,7 @@ do
 		break
 	fi
 		
-	sox $fname -e signed-integer /tmp/fsilence_$$.wav
+	sox $fname -e signed-integer -b 16 /tmp/fsilence_$$.wav
 	echo "F $fname"
 	$executable_path "/tmp/fsilence_$$.wav" $threshold $si_duration $so_duration | sort -n $sort_key
 done
