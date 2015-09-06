@@ -9,7 +9,7 @@
 
 #define SECS_IN_PART 3.0
 #define MEANS_IN_PART 10
-#define CLUSTER_DENSITY 60.0
+#define CLUSTER_DENSITY 25.0
 
 struct audio_file
 {
@@ -161,7 +161,7 @@ void load_wav( const char *fname, struct audio_file *a_file )
 {
 	FILE *file;
 	char buf[255];
-	uint pcm;
+	uint pcm = 0;
 	
 	memset( a_file, 0, sizeof(struct audio_file) );
 
