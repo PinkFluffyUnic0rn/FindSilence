@@ -1,8 +1,8 @@
 all: release
 
 release:
-	gcc findSilence.c -o findsilence -Wall -lm
+	gcc findSilence.c fft.c -o findsilence -Wall -lm
 
 debug:
-	gcc findSilence.c -o findsilence -Wall -D DEBUG \
+	gcc findSilence.c fft.c -o findsilence -Wall -g -D DEBUG \
 	`pkg-config --cflags --libs gtk+-3.0` -lm -lSDL

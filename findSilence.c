@@ -4,12 +4,14 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "fft.h"
+
 #define MIN_FREQUENCY (200 * 2)
 #define MAX_FREQUENCY (4000 * 2)
 
 #define SECS_IN_PART 3.0
 #define MEANS_IN_PART 10
-#define CLUSTER_DENSITY 25.0
+#define CLUSTER_DENSITY 0.0
 
 struct audio_file
 {
@@ -64,7 +66,7 @@ double derivite_sqr( const double *sample_data, uint beg, uint end )
 	double s = 0;
 	uint i;
 
-	for ( i = beg; (i + 1) < end; ++i )
+	for ( i = beg; (i + 1) <= end; ++i )
 	{
 		double a = (sample_data[i+1]-sample_data[i]);
 
@@ -83,10 +85,10 @@ void signal_derivitive_sqr( double **sample_data, uint len, uint d )
 	j = 0;
 	for ( i = 0; i < len; i += d )
 	{
-		if ( (i + d) >= len )
+		if ( (i + d) > len )
 			d = len - i;
 		
-		d_sig[j++] = derivite_sqr( *sample_data, i, i + d );
+		d_sig[j++] = derivite_sqr( *sample_data, i, i + d );	
 	}
 
 	free( *sample_data );
@@ -340,9 +342,9 @@ void init_centroids( const uint *hist, double *means,
 	k1 = floor(p1 * (double) k + 0.5);
 
 	if ( (double) s0 / (double) k0 > CLUSTER_DENSITY
-		&& (double)((max + min) / 2 - min) / (double) k0 > 10.0
+		&& (double)((max + min) / 2 - min) / (double) k0 > 3.0
 		&& (double) s1 / (double) k1 > CLUSTER_DENSITY 
-		&& (double)(max - (max + min) / 2) / (double) k1 > 10.0 )
+		&& (double)(max - (max + min) / 2) / (double) k1 > 3.0 )
 	{
 		init_centroids( hist, means, k_min, k_min + k0, min,
 			(max + min) / 2 );
@@ -460,14 +462,75 @@ void remove_short_ranges( uint *silence, uint len,
 	}
 }
 
+double *calculate_frequency_sd( const double *sample_data,
+	uint samples_count, uint d, uint win_size )
+{
+	uint i, j;
+		
+	double *sdf = (double *) malloc( sizeof(complexd)
+		* samples_count / d ); 
+		
+	double *weights = (double *) malloc( sizeof(double) * win_size );
+	for ( i = 0; i < win_size; ++i )
+		weights[i] = 0.5 * ( 1.0 - cos(2.0 * M_PI *
+				(double) i / (double) (win_size - 1)) );
+	
+	for ( j = 0; j < samples_count; j += d )
+	{
+		complexd *arg = (complexd *) malloc( sizeof(complexd)
+			* win_size );
+	
+		for ( i = 0; i < win_size; ++i )
+		{
+			int idx = j+i-(win_size/2);
+			if ( (idx < samples_count) && (idx >= 0))
+			{
+				arg[i].real = sample_data[idx];
+			}
+			else
+				arg[i].real = 0;
+	
+		}
+	
+		for ( i = 0; i < win_size; ++i )
+			arg[i].real *= weights[i];
+	
+		complexd *c = fft( arg, win_size, 1 );
+		
+		double mean = 0.0, sd = 0.0;
+	
+		for ( i = 0; i < win_size; ++i )
+			mean += sqrt( pow(c[i].real, 2.0)
+				+ pow(c[i].imag, 2.0) );
+		
+		mean /= win_size;
+	
+		for ( i = 0; i < win_size; ++i )
+			sd += pow( mean - sqrt( pow(c[i].real, 2.0)
+				+ pow(c[i].imag, 2.0)), 2.0 );
+		
+		sd /= win_size;
+		sd = sqrt( sd );
+		
+		sdf[j / d] = sd;
+		
+		free(c);
+	}
+
+	free(weights);
+
+	return sdf;
+}
+
 int main( int argc, const char **argv )
 {
 	struct audio_file a_file;
 	double border;
 	double min_len_si_secs;
 	double min_len_so_secs;
+	double *sfm;
 	int i, j;
-	
+
 	load_wav( argv[1], &a_file );
 	border = atof( argv[2] );
 	min_len_si_secs = atof( argv[3] );
@@ -478,18 +541,28 @@ int main( int argc, const char **argv )
 		double *sample_data = get_channel( &a_file, i );
 		uint len = a_file.samples_count;
 		uint d;
-		uint *silence;
+		uint *silence = malloc( sizeof(uint) * len );
+	
 
 		to_borders( sample_data, len );
-		
+
 		d = a_file.frequency / MAX_FREQUENCY;
 		smooth_signal( &sample_data, len, d );
 		len /= d;	
 
-		d = MAX_FREQUENCY / MIN_FREQUENCY;
+		d = 1;
 		signal_derivitive_sqr( &sample_data, len, d );
 		len /= d;
-		
+
+		sfm = calculate_frequency_sd( sample_data, len,
+			MAX_FREQUENCY / MIN_FREQUENCY, 1024 );
+
+		len = len * MIN_FREQUENCY / MAX_FREQUENCY; 
+
+		free( sample_data );
+
+		sample_data = sfm;
+	
 		if ( border > 0.0 )
 		{
 			d = MIN_FREQUENCY / 10;
@@ -520,13 +593,14 @@ int main( int argc, const char **argv )
 
 // for testing //
 #ifdef DEBUG
+
 		if ( SDL_Init(SDL_INIT_AUDIO) < 0 )
 		{
 			fprintf( stderr, "Cannot initilize SDL: %s\n",
 				SDL_GetError() );
 			exit( 1 );
 		}
-		
+
 		draw_signal( sample_data, len, silence );
 		draw_histogram( sample_data, len );
 
@@ -537,6 +611,7 @@ int main( int argc, const char **argv )
 		fgetc(stdin);
 
 		SDL_CloseAudio();
+
 #endif
 	}
 

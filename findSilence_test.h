@@ -20,6 +20,7 @@ struct audio_play
 #define WIDTH 1024
 #define HEIGHT 768
 
+//void draw_signal( double *sample_data, uint len )
 void draw_signal( double *sample_data, uint len, uint *silence )
 {
 	cairo_surface_t *csur;
