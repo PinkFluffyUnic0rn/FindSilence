@@ -11,4 +11,5 @@ typedef struct _complexd
 
 int log_2( uint32_t a );
 
-complexd *fft( complexd *data, uint samples_count, int inv );
+complexd *fft( const complexd *data, complexd *out,
+	uint samples_count, int inv );

@@ -11,7 +11,6 @@
 
 #define SECS_IN_PART 3.0
 #define MEANS_IN_PART 10
-#define CLUSTER_DENSITY 0.0
 
 struct audio_file
 {
@@ -23,6 +22,8 @@ struct audio_file
 };
 
 #ifdef DEBUG
+#include <time.h>
+
 #include <SDL/SDL.h>
 #include "findSilence_test.h"
 #endif
@@ -341,9 +342,7 @@ void init_centroids( const uint *hist, double *means,
 	k0 = floor(p0 * (double) k + 0.5);
 	k1 = floor(p1 * (double) k + 0.5);
 
-	if ( (double) s0 / (double) k0 > CLUSTER_DENSITY
-		&& (double)((max + min) / 2 - min) / (double) k0 > 3.0
-		&& (double) s1 / (double) k1 > CLUSTER_DENSITY 
+	if ( (double)((max + min) / 2 - min) / (double) k0 > 3.0
 		&& (double)(max - (max + min) / 2) / (double) k1 > 3.0 )
 	{
 		init_centroids( hist, means, k_min, k_min + k0, min,
@@ -474,28 +473,26 @@ double *calculate_frequency_sd( const double *sample_data,
 	for ( i = 0; i < win_size; ++i )
 		weights[i] = 0.5 * ( 1.0 - cos(2.0 * M_PI *
 				(double) i / (double) (win_size - 1)) );
+
+	complexd *arg = (complexd *) malloc( sizeof(complexd)
+		* win_size );
+	complexd *c  = (complexd *) malloc( sizeof(complexd)
+		* win_size );
 	
 	for ( j = 0; j < samples_count; j += d )
 	{
-		complexd *arg = (complexd *) malloc( sizeof(complexd)
-			* win_size );
-	
 		for ( i = 0; i < win_size; ++i )
 		{
-			int idx = j+i-(win_size/2);
-			if ( (idx < samples_count) && (idx >= 0))
-			{
-				arg[i].real = sample_data[idx];
-			}
+			int idx = j + i - ( win_size / 2 );
+			if ( (idx < samples_count) && (idx >= 0) )
+				arg[i].real = (double) sample_data[idx]
+					* weights[i];
 			else
 				arg[i].real = 0;
 	
 		}
 	
-		for ( i = 0; i < win_size; ++i )
-			arg[i].real *= weights[i];
-	
-		complexd *c = fft( arg, win_size, 1 );
+		fft( arg, c, win_size, 1 );
 		
 		double mean = 0.0, sd = 0.0;
 	
@@ -514,10 +511,11 @@ double *calculate_frequency_sd( const double *sample_data,
 		
 		sdf[j / d] = sd;
 		
-		free(c);
 	}
 
 	free(weights);
+	free(arg);
+	free(c);
 
 	return sdf;
 }
@@ -535,9 +533,18 @@ int main( int argc, const char **argv )
 	border = atof( argv[2] );
 	min_len_si_secs = atof( argv[3] );
 	min_len_so_secs = atof( argv[4] );
+
 	
 	for ( i = 0; i < a_file.channels; ++i )
 	{
+
+// for testing //
+#ifdef DEBUG
+		struct timespec t0, t1;
+
+		clock_gettime( CLOCK_REALTIME, &t0 );		
+#endif
+
 		double *sample_data = get_channel( &a_file, i );
 		uint len = a_file.samples_count;
 		uint d;
@@ -555,7 +562,7 @@ int main( int argc, const char **argv )
 		len /= d;
 
 		sfm = calculate_frequency_sd( sample_data, len,
-			MAX_FREQUENCY / MIN_FREQUENCY, 1024 );
+			MAX_FREQUENCY / MIN_FREQUENCY, 512 );
 
 		len = len * MIN_FREQUENCY / MAX_FREQUENCY; 
 
@@ -593,6 +600,13 @@ int main( int argc, const char **argv )
 
 // for testing //
 #ifdef DEBUG
+		clock_gettime( CLOCK_REALTIME, &t1 );
+
+		long long int dt = t1.tv_sec * 1000000000LL + t1.tv_nsec
+			- t0.tv_sec * 1000000000LL + t0.tv_nsec;
+		
+		printf( "time elapsed: %f sec\n", (double) dt / 1e9 );
+
 
 		if ( SDL_Init(SDL_INIT_AUDIO) < 0 )
 		{
@@ -611,7 +625,6 @@ int main( int argc, const char **argv )
 		fgetc(stdin);
 
 		SDL_CloseAudio();
-
 #endif
 	}
 

@@ -10,9 +10,8 @@ int log_2( uint32_t a )
 	return c;
 }
 
-complexd *fft( complexd *data, uint samples_count, int inv )
+complexd *fft( const complexd *data, complexd *out, uint samples_count, int inv )
 {
-	complexd *out = (complexd *) malloc(sizeof(complexd)*samples_count);
 	int bits_count = log_2( samples_count );
 	uint32_t i;
 	int j;
@@ -76,6 +75,7 @@ complexd *fft( complexd *data, uint samples_count, int inv )
 
 void fft2d( complexd *data, int w, int h, int inv )
 {
+/*
 	complexd *tmph = (complexd *) malloc( sizeof(complexd) * h );
 	complexd *out;
 	int i, j;
@@ -103,6 +103,7 @@ void fft2d( complexd *data, int w, int h, int inv )
 	}
 
 	free( tmph );
+*/
 }
 
 
