@@ -8,6 +8,7 @@ sort_key="-k 1,1 -k 2,2"
 threshold=-1
 si_duration=0.25
 so_duration=0.0625
+frq_res=3;
 
 args=( "$@" )
 
@@ -32,7 +33,8 @@ do
 		printf "  -ms FLOAT\tset minimum silence duration value (default value is %f)\n" $si_duration
 		printf "  -mS FLOAT\tset minimum sound duration value (default value is %f)\n" $so_duration
 		printf "  -st\t\tsort by time, when event occurred\n"
-		printf "  -sc\t\tsort by channel, where event occurred (default)\n\n"
+		printf "  -sc\t\tsort by channel, where event occurred (default)\n"
+		printf "  -f UINT \tset frequency domain resolution ([1-5], default value is %d)\n\n" $frq_res
 		printf "Example:\n"
 		printf "  $ findsilence -t 0.5 -m 0.25 -st\n\n"
 
@@ -89,6 +91,17 @@ do
 			;;
 		esac
 		;;
+	"-f")
+		regex="^[12345]{1}$"
+
+		if [[ ! ${args[++i]} =~ $regex ]]
+		then
+			echo "Wrong frequency resolution value -- ${args[i]}"
+			exit 1
+		fi
+
+		frq_res=${args[i]}
+		;;
 	*)
 		echo "Wrong argument -- ${args[i]}" >&2
 		exit -1
@@ -108,7 +121,7 @@ do
 		
 	sox $fname -e signed-integer -b 16 /tmp/fsilence_$$.wav
 	echo "F $fname"
-	$executable_path "/tmp/fsilence_$$.wav" $threshold $si_duration $so_duration | sort -n $sort_key
+	$executable_path "/tmp/fsilence_$$.wav" $threshold $si_duration $so_duration $frq_res | sort -n $sort_key
 done
 
 if [ -f "/tmp/fsilence_$$.wav" ]

@@ -61,41 +61,26 @@ void print_output( const uint *silence, uint len, uint c,
 	print_event( c, a_file->samples_count, 'e', a_file->frequency );
 }
 
-
-double derivite_sqr( const double *sample_data, uint beg, uint end )
+void signal_derivitive_sqr( double **sample_data, uint len )
 {
-	double s = 0;
-	uint i;
-
-	for ( i = beg; (i + 1) <= end; ++i )
-	{
-		double a = (sample_data[i+1]-sample_data[i]);
-
-		s += a * a;
-	}
-	
-	return s / pow( (double)(end - beg), 2.0 );
-}
-
-void signal_derivitive_sqr( double **sample_data, uint len, uint d )
-{
-	uint newlen = len / d + ((len % d) ? 1 : 0);
+	uint newlen = len;
 	double *d_sig = (double *) malloc( sizeof(double) * newlen );
 	uint i, j;
 
 	j = 0;
-	for ( i = 0; i < len; i += d )
+	for ( i = 0; i < len; ++i )
 	{
-		if ( (i + d) > len )
-			d = len - i;
+		double a = (*sample_data)[i + 1]-(*sample_data)[i];
 		
-		d_sig[j++] = derivite_sqr( *sample_data, i, i + d );	
+		d_sig[j++] = a * a;	
 	}
 
 	free( *sample_data );
 
 	*sample_data = d_sig;
 }
+
+
 
 double *to_borders( double *sample_data, uint len )
 {
@@ -493,7 +478,7 @@ double *calculate_frequency_sd( const double *sample_data,
 		}
 	
 		fft( arg, c, win_size, 1 );
-		
+	
 		double mean = 0.0, sd = 0.0;
 	
 		for ( i = 0; i < win_size; ++i )
@@ -510,7 +495,21 @@ double *calculate_frequency_sd( const double *sample_data,
 		sd = sqrt( sd );
 		
 		sdf[j / d] = sd;
-		
+/*
+//		printf( "%f\n", sdf[j / d] );
+
+
+		double frsum = 0.0;
+		int b = MIN_FREQUENCY * win_size / 2 / 8000;
+		int e = MAX_FREQUENCY * win_size / 2 / 8000;
+
+		for ( i = b; i < e; ++i )
+			frsum += sqrt( pow(c[i].real, 2.0) + pow(c[i].imag, 2.0));
+
+		sdf[j / d] = frsum / win_size / 2;
+	
+		printf( "%f\n", sdf[j / d] );
+*/
 	}
 
 	free(weights);
@@ -526,6 +525,7 @@ int main( int argc, const char **argv )
 	double border;
 	double min_len_si_secs;
 	double min_len_so_secs;
+	uint fft_len = 128;
 	double *sfm;
 	int i, j;
 
@@ -533,7 +533,7 @@ int main( int argc, const char **argv )
 	border = atof( argv[2] );
 	min_len_si_secs = atof( argv[3] );
 	min_len_so_secs = atof( argv[4] );
-
+	fft_len = pow( 2.0, (atoi( argv[5] ) + 5) );
 	
 	for ( i = 0; i < a_file.channels; ++i )
 	{
@@ -558,13 +558,13 @@ int main( int argc, const char **argv )
 		len /= d;	
 
 		d = 1;
-		signal_derivitive_sqr( &sample_data, len, d );
-		len /= d;
+		signal_derivitive_sqr( &sample_data, len );
 
+		d = MAX_FREQUENCY / 100;
 		sfm = calculate_frequency_sd( sample_data, len,
-			MAX_FREQUENCY / MIN_FREQUENCY, 512 );
-
-		len = len * MIN_FREQUENCY / MAX_FREQUENCY; 
+			d, fft_len );
+		
+		len = len / d; 
 
 		free( sample_data );
 
@@ -572,10 +572,6 @@ int main( int argc, const char **argv )
 	
 		if ( border > 0.0 )
 		{
-			d = MIN_FREQUENCY / 10;
-			signal_derivitive_sqr( &sample_data, len, d );
-			len /= d;
-
 			silence = malloc( sizeof(uint) * len );
 			for ( j = 0; j < len; ++j )
 				silence[j] = (sample_data[j] < border) ? 1 : 0;	
@@ -584,7 +580,6 @@ int main( int argc, const char **argv )
 		{
 			uint part_len = SECS_IN_PART * a_file.frequency
 				* len / a_file.samples_count;
-			
 			silence = find_silence( sample_data, len, part_len );
 		}
 	
