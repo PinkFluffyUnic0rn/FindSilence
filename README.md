@@ -4,6 +4,6 @@ Voice activity detection tool for files. Can't be used for audio stream in real-
 
 type
 
-  ./findsilence.sh --help 
+    ./findsilence.sh --help 
 
 for help
