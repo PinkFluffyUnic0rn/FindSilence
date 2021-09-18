@@ -6,4 +6,4 @@ type
 
     ./findsilence.sh --help 
 
-for help
+for help.
